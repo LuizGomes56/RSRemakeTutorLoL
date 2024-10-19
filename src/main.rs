@@ -1,5 +1,6 @@
-use std::fs::File;
-use std::io::BufReader;
+use serde::de::DeserializeOwned;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 
 use services::game_service::calculate;
 
@@ -8,16 +9,25 @@ mod structs;
 
 use structs::game_struct::GameProps;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file = File::open("test.json")?;
-    let reader = BufReader::new(file);
+pub async fn fetch_json<T>(path: &str) -> Result<T, Box<dyn std::error::Error>>
+where
+    T: DeserializeOwned,
+{
+    // println!("Fetching: {}", path);
+    let mut file = File::open(format!("{}.json", path)).await?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).await?;
+    let data = serde_json::from_str(&contents)?;
+    // println!("Sucess");
+    Ok(data)
+}
 
-    let data: GameProps = serde_json::from_reader(reader)?;
+#[tokio::main(flavor = "multi_thread", worker_threads = 6)]
+// #[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let data = fetch_json::<GameProps>("test").await?;
 
-    println!("{:#?}", data);
-
-    let x = calculate();
-    println!("{}", x);
+    calculate(data).await;
 
     Ok(())
 }

@@ -5,6 +5,8 @@ use serde_json::Value;
 
 use crate::structs::target_struct::RiotChampionTarget;
 
+use super::riot_champion_struct::RiotChampionStats;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GamePassive {
@@ -88,6 +90,46 @@ pub struct GameCoreStats {
     pub ability_power: f64,
 }
 
+impl GameCoreStats {
+    fn formula(base: f64, per_level: f64, level: f64) -> f64 {
+        base + per_level * (level - 1.0) * (0.7025 + 0.0175 * (level - 1.0))
+    }
+    pub fn base_stats(stats: &RiotChampionStats, level: u8) -> Self {
+        let lvl = level as f64;
+        Self {
+            max_health: Self::formula(stats.hp, stats.hpperlevel, lvl),
+            armor: Self::formula(stats.armor, stats.armorperlevel, lvl),
+            magic_resist: Self::formula(stats.spellblock, stats.spellblockperlevel, lvl),
+            attack_damage: Self::formula(stats.attackdamage, stats.attackdamageperlevel, lvl),
+            resource_max: Self::formula(stats.mp, stats.mpperlevel, lvl),
+            ability_power: 0.0,
+        }
+    }
+    pub fn bonus_stats(&self, current: &GameCoreStats) -> Self {
+        Self {
+            max_health: self.max_health - current.max_health,
+            armor: self.armor - current.armor,
+            magic_resist: self.magic_resist - current.magic_resist,
+            attack_damage: self.attack_damage - current.attack_damage,
+            resource_max: self.resource_max - current.resource_max,
+            ability_power: 0.0,
+        }
+    }
+}
+
+impl GameChampionStats {
+    pub fn bonus_stats(&self, prev: GameCoreStats) -> GameCoreStats {
+        GameCoreStats {
+            max_health: prev.max_health - self.max_health,
+            armor: prev.armor - self.armor,
+            magic_resist: prev.magic_resist - self.magic_resist,
+            attack_damage: prev.attack_damage - self.attack_damage,
+            resource_max: prev.resource_max - self.resource_max,
+            ability_power: self.ability_power,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameRelevantProps {
@@ -162,7 +204,7 @@ pub struct GameSummonerSpells {
     pub summoner_spell_two: GameSummonerSpell,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GamePlayerItems {
     #[serde(rename = "itemID")]

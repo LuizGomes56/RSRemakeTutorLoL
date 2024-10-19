@@ -29,7 +29,7 @@ pub struct RiotChampionPassive {
     pub image: RiotChampionImage,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RiotChampionSpell {
     pub id: String,
@@ -39,12 +39,12 @@ pub struct RiotChampionSpell {
     pub image: RiotChampionImage,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RiotChampionSkin {
     pub num: u8,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RiotChampionData {
     pub id: String,
     pub name: String,
@@ -55,7 +55,7 @@ pub struct RiotChampionData {
     pub passive: RiotChampionPassive,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RiotChampion {
     pub data: HashMap<String, RiotChampionData>,
 }

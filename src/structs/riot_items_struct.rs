@@ -10,7 +10,7 @@ pub struct RiotItemGold {
     pub purchasable: bool,
 }
 
-pub type RiotItemStats = Option<HashMap<String, f64>>;
+pub type RiotItemStats = HashMap<String, f64>;
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,9 +18,10 @@ pub struct RiotItem {
     pub name: Option<String>,
     pub gold: Option<RiotItemGold>,
     pub description: Option<String>,
-    pub stats: Option<HashMap<String, f64>>,
+    pub stats: RiotItemStats,
     pub maps: Option<HashMap<String, bool>>,
     pub effect: Option<HashMap<String, String>>,
+    pub from: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -42,14 +42,8 @@ pub struct AllStatsMultiplier {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum AllStatsAdaptativeType {
-    Physical,
-    Magic,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
 pub struct AllStatsAdaptative {
-    pub adaptative_type: AllStatsAdaptativeType,
+    pub adaptative_type: String,
     pub ratio: f64,
 }
 
@@ -76,18 +70,12 @@ pub struct AllStatsChampionStats {
 pub struct AllStatsActivePlayer {
     pub id: String,
     pub level: u8,
-    pub form: AllStatsForm,
+    pub form: String,
     pub multiplier: AllStatsMultiplier,
     pub adaptative: AllStatsAdaptative,
     pub champion_stats: AllStatsChampionStats,
     pub base_stats: GameCoreStats,
     pub bonus_stats: GameCoreStats,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum AllStatsForm {
-    Melee,
-    Ranged,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
