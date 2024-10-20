@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-pub type LocalChampion = HashMap<String, HashMap<String, LocalChampionAbility>>;
+pub type LocalChampion = HashMap<String, LocalChampionAbility>;
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct LocalChampionAbility {

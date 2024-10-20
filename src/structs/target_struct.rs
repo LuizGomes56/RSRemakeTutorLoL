@@ -47,6 +47,8 @@ pub struct AllStatsAdaptative {
     pub ratio: f64,
 }
 
+pub type TargetReplacements = HashMap<String, f64>;
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AllStatsChampionStats {
     pub max_health: f64,

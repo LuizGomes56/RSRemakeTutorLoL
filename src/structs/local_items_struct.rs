@@ -17,7 +17,7 @@ pub struct DamageRange {
 pub struct LocalItemData {
     pub name: String,
     #[serde(rename = "type")]
-    pub ability_type: String,
+    pub item_type: String,
     pub min: LocalItemForm,
     pub max: Option<LocalItemForm>,
     pub onhit: bool,

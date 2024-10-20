@@ -118,13 +118,13 @@ impl GameCoreStats {
 }
 
 impl GameChampionStats {
-    pub fn bonus_stats(&self, prev: GameCoreStats) -> GameCoreStats {
+    pub fn bonus_stats(&self, current: GameCoreStats) -> GameCoreStats {
         GameCoreStats {
-            max_health: prev.max_health - self.max_health,
-            armor: prev.armor - self.armor,
-            magic_resist: prev.magic_resist - self.magic_resist,
-            attack_damage: prev.attack_damage - self.attack_damage,
-            resource_max: prev.resource_max - self.resource_max,
+            max_health: current.max_health - self.max_health,
+            armor: current.armor - self.armor,
+            magic_resist: current.magic_resist - self.magic_resist,
+            attack_damage: current.attack_damage - self.attack_damage,
+            resource_max: current.resource_max - self.resource_max,
             ability_power: self.ability_power,
         }
     }
@@ -173,7 +173,6 @@ pub struct GameActivePlayer {
     pub champion_name: Option<String>,
     pub champion: Option<RiotChampionTarget>,
     pub dragon: Option<GameDragonProps>,
-    pub items: Option<Vec<String>>,
     pub base_stats: Option<GameCoreStats>,
     pub bonus_stats: Option<GameCoreStats>,
     pub team: Option<String>,
@@ -211,7 +210,7 @@ pub struct GamePlayerItems {
     pub item_id: u32,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GamePlayerDamage {
     pub min: f64,
@@ -223,13 +222,26 @@ pub struct GamePlayerDamage {
     pub onhit: Option<bool>,
 }
 
+impl GamePlayerDamage {
+    pub fn void() -> Self {
+        Self {
+            min: 0.0,
+            max: None,
+            damage_type: String::from("mixed"),
+            ..Default::default()
+        }
+    }
+}
+
+pub type GameDamageReturn = HashMap<String, GamePlayerDamage>;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GamePlayerDamages {
-    pub abilities: HashMap<String, GamePlayerDamage>,
-    pub items: HashMap<String, GamePlayerDamage>,
-    pub runes: HashMap<String, GamePlayerDamage>,
-    pub spell: HashMap<String, GamePlayerDamage>,
+    pub abilities: GameDamageReturn,
+    pub items: GameDamageReturn,
+    pub runes: GameDamageReturn,
+    pub spell: GameDamageReturn,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

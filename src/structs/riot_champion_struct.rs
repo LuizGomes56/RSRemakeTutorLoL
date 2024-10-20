@@ -5,7 +5,7 @@ use std::collections::HashMap;
 pub struct RiotChampionImage {
     pub full: String,
 }
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct RiotChampionStats {
     pub hp: f64,
     pub hpperlevel: f64,
