@@ -18,7 +18,7 @@ pub fn fetch_json_sync<T>(path: &str) -> Result<T, Box<dyn std::error::Error>>
 where
     T: DeserializeOwned,
 {
-    println!("SYNC Fetching now, path: {}", path);
+    println!("SYNC: {}", path);
     let file = FileSync::open(format!("{}.json", path))?;
     let reader = BufReader::new(file);
     let data = serde_json::from_reader(reader)?;
@@ -29,7 +29,7 @@ pub async fn fetch_json<T>(path: &str) -> Result<T, Box<dyn std::error::Error>>
 where
     T: DeserializeOwned,
 {
-    println!("ASYNC FETCHING OF: {}", path);
+    println!("ASYNC: {}", path);
     let mut file = File::open(format!("{}.json", path)).await?;
     let mut contents = String::new();
     file.read_to_string(&mut contents).await?;

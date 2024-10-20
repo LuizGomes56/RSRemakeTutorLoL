@@ -1,7 +1,9 @@
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::RwLock;
 
 use crate::{
-    fetch_json,
+    fetch_json, fetch_json_sync,
     structs::{
         riot_champion_struct::RiotChampion,
         riot_items_struct::RiotItems,
@@ -9,25 +11,35 @@ use crate::{
     },
 };
 
+static ITEM_CACHE: Lazy<RiotItems> = Lazy::new(|| {
+    fetch_json_sync::<RiotItems>("src/cache/item").expect("Erro ao carregar o arquivo de itens.")
+});
+
+static IDS_CACHE: Lazy<HashMap<String, HashMap<String, String>>> = Lazy::new(|| {
+    fetch_json_sync::<HashMap<String, HashMap<String, String>>>("src/cache/ids")
+        .expect("Erro ao carregar o arquivo de IDS.")
+});
+
+static CHAMPION_CACHE: Lazy<RwLock<HashMap<String, RiotChampionTarget>>> =
+    Lazy::new(|| RwLock::new(HashMap::with_capacity(10)));
+
 async fn get_champion(champion: &str) -> String {
-    let t = fetch_json::<HashMap<String, HashMap<String, String>>>("src/cache/ids")
-        .await
-        .unwrap();
-    for (key, val) in t.into_iter() {
-        for (_, v) in val.into_iter() {
-            if key == v {
-                println!("Found: {}", key);
-                return key;
+    for (key, val) in IDS_CACHE.iter() {
+        for (_, v) in val.iter() {
+            if v == champion {
+                return key.clone();
             }
         }
     }
-    println!("Did not find: {}", champion);
-    champion.to_string()
+    String::from("TargetDummy")
 }
 
 pub async fn item_api(item: &str) -> Result<RiotItemTarget, Box<dyn std::error::Error>> {
-    let items = fetch_json::<RiotItems>("src/cache/item").await?;
-    let t = items.data[item].clone();
+    let t = ITEM_CACHE
+        .data
+        .get(item)
+        .ok_or("Item não encontrado")?
+        .clone();
     Ok(RiotItemTarget {
         name: t.name.unwrap(),
         description: t.description.unwrap(),
@@ -42,11 +54,35 @@ pub async fn champion_api(
     champion: &str,
 ) -> Result<RiotChampionTarget, Box<dyn std::error::Error>> {
     let name = get_champion(champion).await;
+
+    {
+        let cache = CHAMPION_CACHE.read().unwrap();
+        if let Some(champ) = cache.get(&name) {
+            return Ok(RiotChampionTarget {
+                id: champ.id.clone(),
+                name: champ.name.clone(),
+                stats: champ.stats,
+                spells: champ
+                    .spells
+                    .iter()
+                    .map(|z| RiotChampionTargetSpell {
+                        id: z.id.clone(),
+                        name: z.name.clone(),
+                        description: z.description.clone(),
+                        cooldown: z.cooldown.clone(),
+                    })
+                    .collect(),
+                passive: champ.passive.clone(),
+            });
+        }
+    }
+
     let x = fetch_json::<RiotChampion>(&format!("src/cache/champions/{}", &name)).await?;
-    let t = x.data[&name].clone();
-    Ok(RiotChampionTarget {
-        id: t.id,
-        name: t.name,
+    let t = &x.data[&name];
+
+    let result = RiotChampionTarget {
+        id: t.id.clone(),
+        name: t.name.clone(),
         stats: t.stats,
         spells: t
             .spells
@@ -58,6 +94,13 @@ pub async fn champion_api(
                 cooldown: z.cooldown.clone(),
             })
             .collect(),
-        passive: t.passive,
-    })
+        passive: t.passive.clone(),
+    };
+
+    {
+        let mut cache = CHAMPION_CACHE.write().unwrap();
+        cache.insert(name.clone(), result.clone());
+    }
+
+    Ok(result)
 }
