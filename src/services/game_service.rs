@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
 use tokio::sync::RwLock as RwLockAsync;
-use tokio::task;
 
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -18,6 +17,7 @@ use crate::structs::game_struct::GameDamageReturn;
 use crate::structs::game_struct::GamePlayerDamage;
 use crate::structs::game_struct::GamePlayerDamages;
 use crate::structs::local_champion_struct::LocalChampionAbility;
+use crate::structs::local_stats_struct::LocalStats;
 use crate::structs::target_struct::TargetReplacements;
 use crate::{
     fetch_json,
@@ -44,57 +44,15 @@ static LOCAL_RUNES: Lazy<Arc<LocalRunes>> = Lazy::new(|| {
     Arc::new(fetch_json_sync::<LocalRunes>("src/effects/runes").expect("Falha ao carregar runas"))
 });
 
+static LOCAL_STATS: Lazy<Arc<LocalStats>> = Lazy::new(|| {
+    Arc::new(fetch_json_sync::<LocalStats>("src/cache/stats").expect("Falha ao carregar stats"))
+});
+
 static LAST_CHAMP_ID: Lazy<RwLock<Option<String>>> = Lazy::new(|| RwLock::new(None));
 
 static LOCAL_CHAMP: Lazy<RwLock<LocalChampion>> =
     Lazy::new(|| RwLock::new(HashMap::<String, LocalChampionAbility>::new()));
 
-/*
-async fn assign_champion(g: &mut GameProps) {
-    for player in &mut g.all_players.iter_mut() {
-        if player.summoner_name == g.active_player.summoner_name {
-            g.active_player.team = Some(player.team.clone());
-        }
-        let c = champion_api(&player.champion_name).await;
-        match c {
-            Ok(c) => player.champion = Some(c),
-            Err(e) => panic!("Error fetching champion in assign_champion(): {:?}", e),
-        }
-    }
-}
-*/
-
-/*
-async fn assign_champion(data: GameProps) -> GameProps {
-    let mut futures = FuturesUnordered::new();
-    let data_arc = Arc::new(RwLock::new(data));
-    {
-        let data_read = data_arc.read().unwrap();
-        for player_iter in data_read.all_players.iter() {
-            let data_clone = Arc::clone(&data_arc);
-            let player_name = player_iter.summoner_name.clone();
-
-            futures.push(async move {
-                let c = champion_api(&player_name).await;
-                match c {
-                    Ok(champion_data) => {
-                        let mut data_write = data_clone.write().unwrap();
-                        let player = data_write
-                            .all_players
-                            .iter_mut()
-                            .find(|p| p.summoner_name == player_name)
-                            .unwrap();
-                        player.champion = Some(champion_data);
-                    }
-                    Err(e) => panic!("Error fetching champion in assign_champion(): {:?}", e),
-                }
-            });
-        }
-    }
-    while let Some(_) = futures.next().await {}
-    Arc::try_unwrap(data_arc).unwrap().into_inner().unwrap()
-}
-*/
 async fn assign_champion(data: GameProps) -> GameProps {
     let data_arc = Arc::new(RwLockAsync::new(data));
     let mut futures = FuturesUnordered::new();
@@ -290,7 +248,10 @@ fn json_replacements(stats: &TargetAllStats) -> TargetReplacements {
         ("expectedBonusHealth", y.bonus_stats.max_health),
     ];
 
-    entries.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+    entries
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect()
 }
 
 fn evaluate(
@@ -348,12 +309,12 @@ fn rune_damage(
                 }
                 let (min, _) = evaluate(min_str, None, stats, None);
                 result.insert(
-                    rune.to_string(),
+                    rune.clone(),
                     GamePlayerDamage {
                         min,
                         max: None,
-                        damage_type: val.rune_type.to_string(),
-                        name: Some(val.name.to_string()),
+                        damage_type: val.rune_type.clone(),
+                        name: Some(val.name.clone()),
                         onhit: None,
                         area: None,
                     },
@@ -405,12 +366,12 @@ fn item_damage(
                     },
                 );
                 result.insert(
-                    item.to_string(),
+                    item.clone(),
                     GamePlayerDamage {
                         min,
                         max,
-                        damage_type: val.item_type.to_string(),
-                        name: Some(val.name.to_string()),
+                        damage_type: val.item_type.clone(),
+                        name: Some(val.name.clone()),
                         onhit: Some(val.onhit),
                         area: None,
                     },
@@ -427,7 +388,7 @@ fn spell_damage(spells: &Vec<String>, level: u8) -> GameDamageReturn {
     for spell in spells {
         if spell == "SummonerDot" {
             result.insert(
-                spell.to_string(),
+                spell.clone(),
                 GamePlayerDamage {
                     min: 50.0 + 20.0 * level as f64,
                     max: None,
@@ -458,7 +419,7 @@ fn ability_damage(
             _ => panic!("Unknown key: {}", key),
         };
         if index == 0 {
-            result.insert(key.to_string(), GamePlayerDamage::void());
+            result.insert(key.clone(), GamePlayerDamage::void());
         }
         let min_str = &val.min[index];
         let max_str = val.max.as_ref().and_then(|t| t.get(index));
@@ -466,11 +427,11 @@ fn ability_damage(
         let (min, max) = evaluate(min_str, max_str, stats, None);
 
         result.insert(
-            key.to_string(),
+            key.clone(),
             GamePlayerDamage {
                 min,
                 max,
-                damage_type: val.ability_type.to_string(),
+                damage_type: val.ability_type.clone(),
                 name: None,
                 area: None,
                 onhit: None,
@@ -480,7 +441,7 @@ fn ability_damage(
     let acst = &stats.active_player.champion_stats;
     let attack = acst.attack_damage * stats.active_player.multiplier.physical;
     result.insert(
-        "A".to_string(),
+        "A".to_owned(),
         GamePlayerDamage {
             min: attack,
             damage_type: String::from("physical"),
@@ -491,7 +452,7 @@ fn ability_damage(
         },
     );
     result.insert(
-        "C".to_string(),
+        "C".to_owned(),
         GamePlayerDamage {
             min: attack * acst.crit_damage / 100.0,
             damage_type: String::from("physical"),
@@ -534,7 +495,7 @@ fn all_stats(player: &GamePlayer, active_player: &GameActivePlayer) -> TargetAll
 
     let exhp = ehp.clamp(0.0, 2500.0);
 
-    if rel.runes.min.contains(&"8299".to_string()) {
+    if rel.runes.min.contains(&"8299".to_owned()) {
         if mshp > 0.7 {
             acp_mod += 0.11;
         } else if mshp >= 0.4 {
@@ -542,20 +503,20 @@ fn all_stats(player: &GamePlayer, active_player: &GameActivePlayer) -> TargetAll
         }
     }
 
-    if rel.items.min.contains(&"4015".to_string()) {
+    if rel.items.min.contains(&"4015".to_owned()) {
         acp_mod += exhp / (220000.0 / 15.0);
     }
 
     let form = if acs.attack_range > 350.0 {
-        "ranged".to_string()
+        "ranged".to_owned()
     } else {
-        "melee".to_string()
+        "melee".to_owned()
     };
 
     let adaptative_type = if adp {
-        "physical".to_string()
+        "physical".to_owned()
     } else {
-        "magic".to_string()
+        "magic".to_owned()
     };
 
     TargetAllStats {
