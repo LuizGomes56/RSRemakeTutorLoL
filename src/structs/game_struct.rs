@@ -30,40 +30,85 @@ pub struct GameAbilities {
     pub r: GameAbility,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct GameChampionStats {
-    pub ability_haste: f64,
     pub ability_power: f64,
     pub armor: f64,
     pub armor_penetration_flat: f64,
     pub armor_penetration_percent: f64,
     pub attack_damage: f64,
     pub attack_range: f64,
-    pub attack_speed: f64,
-    pub bonus_armor_penetration_percent: f64,
-    pub bonus_magic_penetration_percent: f64,
     pub crit_chance: f64,
     pub crit_damage: f64,
     pub current_health: f64,
-    pub heal_shield_power: f64,
-    pub health_regen_rate: f64,
-    pub life_steal: f64,
-    pub magic_lethality: f64,
     pub magic_penetration_flat: f64,
     pub magic_penetration_percent: f64,
     pub magic_resist: f64,
     pub max_health: f64,
-    pub move_speed: f64,
-    pub omnivamp: f64,
     pub physical_lethality: f64,
-    pub physical_vamp: f64,
     pub resource_max: f64,
-    pub resource_regen_rate: f64,
-    pub resource_type: String,
-    pub resource_value: f64,
-    pub spell_vamp: f64,
-    pub tenacity: f64,
+}
+
+impl GameChampionStats {
+    fn to_camel_case(snake_str: &str) -> String {
+        let mut s = snake_str.split('_').peekable();
+        let mut camel_case = String::new();
+        if let Some(first) = s.next() {
+            camel_case.push_str(first);
+        }
+        while let Some(word) = s.next() {
+            camel_case.push_str(&Self::capitalize(word));
+        }
+        camel_case
+    }
+    fn capitalize(word: &str) -> String {
+        let mut c = word.chars();
+        match c.next() {
+            None => String::new(),
+            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        }
+    }
+    pub fn into_hashmap_camel(&mut self) -> HashMap<String, f64> {
+        let json = serde_json::to_value(self).unwrap();
+        let mut map = HashMap::new();
+
+        if let Value::Object(obj) = json {
+            for (key, value) in obj {
+                if let Value::Number(num) = value {
+                    if let Some(f) = num.as_f64() {
+                        let camel_case_key = Self::to_camel_case(&key);
+                        map.insert(camel_case_key, f);
+                    }
+                }
+            }
+        }
+        map
+    }
+    pub fn from_hashmap_camel(map: HashMap<String, f64>) -> Self {
+        let mut stats = Self::default();
+        for (key, value) in map {
+            match key.as_str() {
+                "abilityPower" => stats.ability_power = value,
+                "armor" => stats.armor = value,
+                "armorPenetrationFlat" => stats.armor_penetration_flat = value,
+                "armorPenetrationPercent" => stats.armor_penetration_percent = value,
+                "attackDamage" => stats.attack_damage = value,
+                "attackRange" => stats.attack_range = value,
+                "critChance" => stats.crit_chance = value,
+                "critDamage" => stats.crit_damage = value,
+                "currentHealth" => stats.current_health = value,
+                "magicPenetrationFlat" => stats.magic_penetration_flat = value,
+                "magicPenetrationPercent" => stats.magic_penetration_percent = value,
+                "magicResist" => stats.magic_resist = value,
+                "maxHealth" => stats.max_health = value,
+                "physicalLethality" => stats.physical_lethality = value,
+                "resourceMax" => stats.resource_max = value,
+                _ => {}
+            }
+        }
+        stats
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -242,6 +287,17 @@ pub struct GamePlayerDamages {
     pub items: GameDamageReturn,
     pub runes: GameDamageReturn,
     pub spell: GameDamageReturn,
+}
+
+impl GamePlayerDamages {
+    pub fn into_hashmap(&self) -> HashMap<&'static str, &GameDamageReturn> {
+        let mut map = HashMap::new();
+        map.insert("abilities", &self.abilities);
+        map.insert("items", &self.items);
+        map.insert("runes", &self.runes);
+        map.insert("spell", &self.spell);
+        map
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

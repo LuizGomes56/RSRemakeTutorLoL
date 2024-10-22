@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::{
-    game_struct::GameCoreStats,
+    game_struct::{GameCoreStats, GamePlayerDamages},
     riot_champion_struct::{RiotChampionPassive, RiotChampionStats},
     riot_items_struct::{RiotItemGold, RiotItemStats},
 };
@@ -58,7 +58,6 @@ pub struct AllStatsChampionStats {
     pub resource_max: f64,
     pub ability_power: f64,
     pub current_health: f64,
-    pub attack_speed: f64,
     pub attack_range: f64,
     pub crit_chance: f64,
     pub crit_damage: f64,
@@ -110,4 +109,10 @@ pub struct TargetAllStats {
     pub active_player: AllStatsActivePlayer,
     pub player: AllStatsPlayer,
     pub property: AllStatsProperty,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TargetToolChange {
+    pub dif: GamePlayerDamages,
+    pub sum: f64,
 }

@@ -11,14 +11,15 @@ use meval::eval_str;
 use regex::Regex;
 
 use super::lol_service::{champion_api, item_api};
-use crate::fetch_json_sync;
 use crate::structs::game_struct::GameAbilities;
 use crate::structs::game_struct::GameDamageReturn;
 use crate::structs::game_struct::GamePlayerDamage;
 use crate::structs::game_struct::GamePlayerDamages;
+use crate::structs::game_struct::GamePlayerTool;
 use crate::structs::local_champion_struct::LocalChampionAbility;
 use crate::structs::local_stats_struct::LocalStats;
 use crate::structs::target_struct::TargetReplacements;
+use crate::structs::target_struct::TargetToolChange;
 use crate::{
     fetch_json,
     structs::{
@@ -35,6 +36,7 @@ use crate::{
         },
     },
 };
+use crate::{fetch_json_sync, structured_clone};
 
 static LOCAL_ITEMS: Lazy<Arc<LocalItems>> = Lazy::new(|| {
     Arc::new(fetch_json_sync::<LocalItems>("src/effects/items").expect("Falha ao carregar itens"))
@@ -143,61 +145,229 @@ pub async fn calculate(mut data: GameProps) -> () {
 
     let mut futures = FuturesUnordered::new();
 
-    for mut player in all_players.into_iter() {
+    let active_player_clone = Arc::clone(&active_player);
+
+    for mut player in all_players
+        .into_iter()
+        .filter(|p| &p.team != active_player_clone.team.as_ref().unwrap())
+    {
         let active_player_clone = Arc::clone(&active_player);
+        futures.push(async move {
+            if let Some(champion) = &player.champion {
+                player.base_stats = Some(GameCoreStats::base_stats(&champion.stats, player.level));
 
-        if &player.team.as_str() != &active_player_clone.team.as_ref().unwrap() {
-            futures.push(async move {
-                if let Some(champion) = &player.champion {
-                    player.base_stats =
-                        Some(GameCoreStats::base_stats(&champion.stats, player.level));
+                let items: Vec<String> = player
+                    .items
+                    .iter()
+                    .map(|item| item.item_id.to_string())
+                    .collect();
 
-                    let items: Vec<String> = player
-                        .items
-                        .iter()
-                        .map(|item| item.item_id.to_string())
-                        .collect();
+                player.champion_stats = Some(player_stats(player.base_stats.unwrap(), items).await);
 
-                    player.champion_stats =
-                        Some(player_stats(player.base_stats.unwrap(), items).await);
+                player.bonus_stats = Some(GameCoreStats::bonus_stats(
+                    &player.champion_stats.unwrap(),
+                    &player.base_stats.unwrap(),
+                ));
 
-                    player.bonus_stats = Some(GameCoreStats::bonus_stats(
-                        &player.champion_stats.unwrap(),
-                        &player.base_stats.unwrap(),
-                    ));
+                let stats = all_stats(&player, &active_player_clone);
 
-                    let stats = all_stats(&player, &active_player_clone);
-
-                    player.damage = Some(GamePlayerDamages {
-                        abilities: ability_damage(
-                            &stats,
-                            &active_player_clone.abilities,
-                            &LOCAL_CHAMP.read().unwrap(),
-                        ),
-                        items: item_damage(
-                            &stats,
-                            &active_player_clone.relevant.as_ref().unwrap().items.min,
-                            &LOCAL_ITEMS,
-                        ),
-                        runes: rune_damage(
-                            &stats,
-                            &active_player_clone.relevant.as_ref().unwrap().runes.min,
-                            &LOCAL_RUNES,
-                        ),
-                        spell: spell_damage(
-                            &active_player_clone.relevant.as_ref().unwrap().spell.min,
-                            active_player_clone.level,
-                        ),
-                    })
-                }
-                player
-            });
-        }
+                player.damage = Some(GamePlayerDamages {
+                    abilities: ability_damage(
+                        &stats,
+                        &active_player_clone.abilities,
+                        &LOCAL_CHAMP.read().unwrap(),
+                    ),
+                    items: item_damage(
+                        &stats,
+                        &active_player_clone.relevant.as_ref().unwrap().items.min,
+                        &LOCAL_ITEMS,
+                    ),
+                    runes: rune_damage(
+                        &stats,
+                        &active_player_clone.relevant.as_ref().unwrap().runes.min,
+                        &LOCAL_RUNES,
+                    ),
+                    spell: spell_damage(
+                        &active_player_clone.relevant.as_ref().unwrap().spell.min,
+                        active_player_clone.level,
+                    ),
+                });
+                player.tool = Some(tool_damage(
+                    structured_clone(&active_player_clone),
+                    &player,
+                    "4645",
+                ));
+            }
+            player
+        });
     }
     let mut all_players_collected = Vec::<GamePlayer>::with_capacity(5);
 
     while let Some(t) = futures.next().await {
         all_players_collected.push(t);
+    }
+}
+
+fn assing_stats(item: &str, active_player: &mut GameActivePlayer) -> HashMap<String, f64> {
+    let mut stats = active_player.champion_stats.into_hashmap_camel();
+    if let Some(item) = &LOCAL_STATS.get(item) {
+        let modifiers = &item.stats.modifiers;
+        for (key, val) in modifiers.into_iter() {
+            if let Some(k) = stats.get_mut(key) {
+                match val.to_string().parse::<f64>() {
+                    Ok(v) => *k += v,
+                    Err(_) => {
+                        let v = val.as_str().map(|s| s.replace("%", ""));
+                        *k -= v.unwrap().parse::<f64>().unwrap_or(0.0);
+                    }
+                }
+            }
+        }
+    }
+    stats
+}
+
+fn evaluate_change(next: &GamePlayerDamage, curr: &GamePlayerDamage) -> GamePlayerDamage {
+    GamePlayerDamage {
+        min: next.min - curr.min,
+        max: if next.max.is_some() && curr.max.is_some() {
+            Some(next.max.unwrap() - curr.max.unwrap())
+        } else {
+            None
+        },
+        damage_type: next.damage_type.clone(),
+        name: next.name.clone(),
+        area: next.area,
+        onhit: next.onhit,
+    }
+}
+
+fn process_change(
+    at: &str,
+    val: &HashMap<String, GamePlayerDamage>,
+    min_at: &HashMap<String, GamePlayerDamage>,
+    change_at: &mut HashMap<String, GamePlayerDamage>,
+    sum: &mut f64,
+) {
+    for (k, v) in val.iter() {
+        match min_at.get(k.as_str()) {
+            Some(curr) => {
+                let result = evaluate_change(v, curr);
+                *sum += result.min;
+                if let Some(max) = result.max {
+                    *sum += max;
+                }
+                change_at.insert(k.to_owned(), result);
+            }
+            None => {
+                println!(
+                    "Key is {}, and was not found in both directions on {}",
+                    k, at
+                );
+                continue;
+            }
+        }
+    }
+}
+
+fn find_change(
+    max: &GamePlayerDamages,
+    min: &GamePlayerDamages,
+    sum: &mut f64,
+) -> GamePlayerDamages {
+    let mut change = GamePlayerDamages {
+        abilities: GameDamageReturn::new(),
+        items: GameDamageReturn::new(),
+        runes: GameDamageReturn::new(),
+        spell: GameDamageReturn::new(),
+    };
+    let max_hashmap = max.into_hashmap();
+    let min_hashmap = min.into_hashmap();
+    for (key, val) in max_hashmap.into_iter() {
+        match key {
+            "abilities" => process_change(
+                key,
+                &val,
+                min_hashmap.get(key).unwrap(),
+                &mut change.abilities,
+                sum,
+            ),
+            "items" => process_change(
+                key,
+                &val,
+                min_hashmap.get(key).unwrap(),
+                &mut change.items,
+                sum,
+            ),
+            "runes" => process_change(
+                key,
+                &val,
+                min_hashmap.get(key).unwrap(),
+                &mut change.runes,
+                sum,
+            ),
+            "spell" => process_change(
+                key,
+                &val,
+                min_hashmap.get(key).unwrap(),
+                &mut change.spell,
+                sum,
+            ),
+            _ => continue,
+        }
+    }
+    change
+}
+
+fn tool_change(max: &GamePlayerDamages, min: &GamePlayerDamages) -> TargetToolChange {
+    let mut sum = 0.0;
+    let dif = find_change(max, min, &mut sum);
+    TargetToolChange { dif, sum }
+}
+
+fn tool_damage(
+    mut active_player: GameActivePlayer,
+    player: &GamePlayer,
+    item: &str,
+) -> GamePlayerTool {
+    let assigned_stats = assing_stats(item, &mut active_player);
+    active_player.champion_stats = GameChampionStats::from_hashmap_camel(assigned_stats);
+    active_player.bonus_stats = Some(GameChampionStats::bonus_stats(
+        &active_player.champion_stats,
+        active_player.base_stats.unwrap(),
+    ));
+
+    let stats = all_stats(&player, &active_player);
+
+    let damage_max = GamePlayerDamages {
+        abilities: ability_damage(
+            &stats,
+            &active_player.abilities,
+            &LOCAL_CHAMP.read().unwrap(),
+        ),
+        items: item_damage(
+            &stats,
+            &active_player.relevant.as_ref().unwrap().items.min,
+            &LOCAL_ITEMS,
+        ),
+        runes: rune_damage(
+            &stats,
+            &active_player.relevant.as_ref().unwrap().runes.min,
+            &LOCAL_RUNES,
+        ),
+        spell: spell_damage(
+            &active_player.relevant.as_ref().unwrap().spell.min,
+            active_player.level,
+        ),
+    };
+
+    let change = tool_change(&damage_max, &player.damage.as_ref().unwrap());
+
+    GamePlayerTool {
+        sum: change.sum,
+        dif: Some(change.dif),
+        max: damage_max,
+        rec: None,
     }
 }
 
@@ -227,7 +397,7 @@ fn json_replacements(stats: &TargetAllStats) -> TargetReplacements {
         ("currentArmor", k.armor),
         ("currentHealth", k.current_health),
         ("basicAttack", 1.0),
-        ("attackSpeed", k.attack_speed),
+        ("attackSpeed", 1.0),
         ("critChance", k.crit_chance),
         ("critDamage", k.crit_damage),
         ("adaptative", x.adaptative.ratio),
@@ -360,7 +530,7 @@ fn item_damage(
                     max_str,
                     stats,
                     if total.is_some() {
-                        Some(HashMap::from([("total".to_string(), total.unwrap())]))
+                        Some(HashMap::from([("total".to_owned(), total.unwrap())]))
                     } else {
                         None
                     },
@@ -541,7 +711,6 @@ fn all_stats(player: &GamePlayer, active_player: &GameActivePlayer) -> TargetAll
                 resource_max: acs.resource_max,
                 max_health: acs.max_health,
                 current_health: acs.current_health,
-                attack_speed: acs.attack_speed,
                 attack_range: acs.attack_range,
                 crit_chance: acs.crit_chance,
                 crit_damage: acs.crit_damage,

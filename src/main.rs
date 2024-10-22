@@ -3,6 +3,7 @@ use std::io::BufReader;
 use std::time::Instant;
 
 use serde::de::DeserializeOwned;
+use std::error::Error;
 use tokio::fs::File;
 
 use tokio::io::AsyncReadExt;
@@ -14,22 +15,30 @@ mod structs;
 
 use structs::game_struct::GameProps;
 
+use serde::Serialize;
+use serde_json;
+
+pub fn structured_clone<T>(value: &T) -> T
+where
+    T: Serialize + DeserializeOwned,
+{
+    serde_json::from_str(&serde_json::to_string(value).unwrap()).unwrap()
+}
+
 pub fn fetch_json_sync<T>(path: &str) -> Result<T, Box<dyn std::error::Error>>
 where
     T: DeserializeOwned,
 {
-    println!("SYNC: {}", path);
     let file = FileSync::open(format!("{}.json", path))?;
     let reader = BufReader::new(file);
     let data = serde_json::from_reader(reader)?;
     Ok(data)
 }
 
-pub async fn fetch_json<T>(path: &str) -> Result<T, Box<dyn std::error::Error>>
+pub async fn fetch_json<T>(path: &str) -> Result<T, Box<dyn Error>>
 where
     T: DeserializeOwned,
 {
-    println!("ASYNC: {}", path);
     let mut file = File::open(format!("{}.json", path)).await?;
     let mut contents = String::new();
     file.read_to_string(&mut contents).await?;
@@ -37,8 +46,8 @@ where
     Ok(data)
 }
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 6)]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+async fn main() -> Result<(), Box<dyn Error>> {
     let now = Instant::now();
 
     let data = fetch_json::<GameProps>("test").await?;

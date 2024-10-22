@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::error::Error;
 use std::sync::RwLock;
 
 use crate::{
@@ -34,7 +35,7 @@ async fn get_champion(champion: &str) -> String {
     String::from("TargetDummy")
 }
 
-pub async fn item_api(item: &str) -> Result<RiotItemTarget, Box<dyn std::error::Error>> {
+pub async fn item_api(item: &str) -> Result<RiotItemTarget, Box<dyn Error>> {
     let t = ITEM_CACHE
         .data
         .get(item)
@@ -50,9 +51,7 @@ pub async fn item_api(item: &str) -> Result<RiotItemTarget, Box<dyn std::error::
     })
 }
 
-pub async fn champion_api(
-    champion: &str,
-) -> Result<RiotChampionTarget, Box<dyn std::error::Error>> {
+pub async fn champion_api(champion: &str) -> Result<RiotChampionTarget, Box<dyn Error>> {
     let name = get_champion(champion).await;
 
     {
