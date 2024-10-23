@@ -1,22 +1,23 @@
+use actix_cors::Cors;
+use std::env;
 use std::fs::File as FileSync;
 use std::io::BufReader;
-use std::time::Instant;
 
+use actix_web::{web, App, HttpServer};
+use dotenvy::dotenv;
+use sea_orm::{Database, DatabaseConnection};
 use serde::de::DeserializeOwned;
 use std::error::Error;
 use tokio::fs::File;
 
 use tokio::io::AsyncReadExt;
 
-use services::game_service::calculate;
-
+mod entity;
+mod routes;
 mod services;
 mod structs;
 
-use structs::game_struct::GameProps;
-
 use serde::Serialize;
-use serde_json;
 
 pub fn structured_clone<T>(value: &T) -> T
 where
@@ -46,17 +47,32 @@ where
     Ok(data)
 }
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let now = Instant::now();
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    dotenv().ok();
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
-    let data = fetch_json::<GameProps>("test").await?;
+    let db: DatabaseConnection = Database::connect(&database_url)
+        .await
+        .expect("Failed to connect to the database");
 
-    for _i in 0..5 {
-        calculate(data.clone()).await;
-    }
-
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:?}", elapsed);
-    Ok(())
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(db.clone()))
+            .wrap(
+                Cors::default()
+                    .allowed_origin("http://localhost:5173")
+                    .allowed_methods(vec!["GET", "POST"])
+                    .allowed_headers(vec![
+                        actix_web::http::header::AUTHORIZATION,
+                        actix_web::http::header::ACCEPT,
+                    ])
+                    .allowed_header(actix_web::http::header::CONTENT_TYPE)
+                    .max_age(3600),
+            )
+            .configure(routes::index::config)
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
 }

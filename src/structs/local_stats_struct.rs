@@ -23,8 +23,8 @@ pub struct LocalStatsHashMap {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LocalStatsGold {
-    base: u32,
-    purchasable: bool,
-    total: u32,
-    sell: u32,
+    pub base: u32,
+    pub purchasable: bool,
+    pub total: u32,
+    pub sell: u32,
 }

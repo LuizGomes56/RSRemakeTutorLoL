@@ -193,10 +193,10 @@ pub struct GameRelevant {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GameToolInfo {
     pub id: String,
-    pub name: Option<String>,
+    pub name: String,
     pub active: bool,
-    pub gold: Option<f64>,
-    pub raw: Value,
+    pub gold: Option<u32>,
+    pub raw: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

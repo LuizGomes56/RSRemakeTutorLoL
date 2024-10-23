@@ -16,6 +16,7 @@ use crate::structs::game_struct::GameDamageReturn;
 use crate::structs::game_struct::GamePlayerDamage;
 use crate::structs::game_struct::GamePlayerDamages;
 use crate::structs::game_struct::GamePlayerTool;
+use crate::structs::game_struct::GameToolInfo;
 use crate::structs::local_champion_struct::LocalChampionAbility;
 use crate::structs::local_stats_struct::LocalStats;
 use crate::structs::target_struct::TargetReplacements;
@@ -86,7 +87,7 @@ async fn assign_champion(data: GameProps) -> GameProps {
     Arc::try_unwrap(data_arc).unwrap().into_inner()
 }
 
-pub async fn calculate(mut data: GameProps) -> () {
+pub async fn calculate(mut data: GameProps, tool_item: &str) -> GameProps {
     data = assign_champion(data).await;
 
     let mut active_player = Arc::new(data.active_player);
@@ -139,6 +140,21 @@ pub async fn calculate(mut data: GameProps) -> () {
                     runes: filter_runes(&LOCAL_RUNES, &acp.full_runes),
                     spell: filter_spell(&player.summoner_spells),
                 });
+
+                {
+                    let path = &LOCAL_STATS.get(tool_item).unwrap();
+                    let raw = &path.stats.raw;
+                    let name = &path.name;
+                    let gold = &path.gold.total;
+
+                    acp.tool = Some(GameToolInfo {
+                        id: tool_item.to_string(),
+                        name: name.clone(),
+                        active: LOCAL_ITEMS.data.keys().find(|t| t == &tool_item).is_some(),
+                        gold: Some(gold.clone()),
+                        raw: raw.clone(),
+                    });
+                }
             }
         }
     }
@@ -195,7 +211,7 @@ pub async fn calculate(mut data: GameProps) -> () {
                 player.tool = Some(tool_damage(
                     structured_clone(&active_player_clone),
                     &player,
-                    "4645",
+                    tool_item,
                 ));
             }
             player
@@ -205,6 +221,15 @@ pub async fn calculate(mut data: GameProps) -> () {
 
     while let Some(t) = futures.next().await {
         all_players_collected.push(t);
+    }
+
+    drop(active_player_clone);
+
+    GameProps {
+        active_player: Arc::try_unwrap(active_player).unwrap(),
+        all_players: all_players_collected,
+        events: data.events,
+        game_data: data.game_data,
     }
 }
 
