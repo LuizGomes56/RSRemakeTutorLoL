@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::entity::{game_data, games};
 use crate::services::game_service::calculate;
 use crate::structs::game_struct::GameProps;
@@ -43,8 +45,10 @@ pub async fn last_by_code(
             match second_query {
                 Ok(Some(query_2)) => match serde_json::from_str::<GameProps>(&query_2.game_data) {
                     Ok(game_props) => {
+                        let instant = Instant::now();
                         let calc = calculate(game_props, &data.item).await;
-
+                        let elapsed = instant.elapsed();
+                        println!("Elapsed: {:.7?}", elapsed);
                         let game = match serde_json::to_string(&calc) {
                             Ok(json) => json,
                             Err(_) => {
